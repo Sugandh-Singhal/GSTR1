@@ -39,7 +39,7 @@ CUSTOM_COLUMN_MAPPINGS = {
 }
 
 # UI
-st.title("GST Excel Processor using XlsxWriter")
+st.title("GSTR1 Template Process")
 
 uploaded_file = st.file_uploader("Upload your Excel file", type=["xlsx"])
 return_period = st.text_input("Enter 6-digit Return Period (YYYYMM)", max_chars=6)
