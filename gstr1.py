@@ -1,8 +1,8 @@
 import streamlit as st
 import pandas as pd
 import io
-import xlsxwriter
-
+# UI
+st.title("GSTR1 Template Process")
 # Template columns
 TEMPLATE_COLUMNS = [
     "GSTIN of the Tax Payer*", "Return Period*", "Gross Turnover", "Gross Turnover - April to June, 2017",
@@ -35,11 +35,12 @@ CUSTOM_COLUMN_MAPPINGS = {
     "SGST Amount": "SGST Amount*",
     "IGST Amount": "IGST Amount*",
     "Item quantity": "Quantity of goods sold*",
-    "Item Unit of Measurement": "UQC (Unit of Measure) of goods sold*"
+    "Item Unit of Measurement": "UQC (Unit of Measure) of goods sold*",
+    "Shipping Port Code - Export": "Port Code*",
+    "Shipping Bill Number - Export":"Shipping Bill or Bill of Export Number*",
+    "Shipping Bill Date - Export": "Shipping Bill or Bill of Export Date*"
 }
 
-# UI
-st.title("GSTR1 Template Process")
 
 uploaded_file = st.file_uploader("Upload your Excel file", type=["xlsx"])
 return_period = st.text_input("Enter 6-digit Return Period (YYYYMM)", max_chars=6)
@@ -73,28 +74,13 @@ if uploaded_file and return_period.isdigit() and len(return_period) == 6:
         df_template = df_template.iloc[:len(df_uploaded)].copy()
 
         df_template["Return Period*"] = return_period
-        df_template["Reverse Charge*"] = "N"
         df_template["Document Category"] = "01-Inv. for Outward Supply"
         df_template["Document Number*"] = 1
 
-        hsn = df_template["HSN or SAC of Goods or Services*"].astype(str)
-        df_template.loc[hsn.str.startswith("99", na=False), "Identifier of Goods or Services*"] = "S"
+        df_template["Identifier of Goods or Services*"] = df_template["HSN or SAC of Goods or Services*"].astype(str).apply(lambda x: "S" if x.startswith("99") else "G")
 
-        exp_s = (df_template["Invoice Type*"] == "EXP") & (df_template["Identifier of Goods or Services*"] == "S")
-        df_template.loc[exp_s, "Quantity of goods sold*"] = ""
-        df_template.loc[exp_s, "UQC (Unit of Measure) of goods sold*"] = ""
-
-        no_gstin = df_template["Counter Party GSTIN/UID*"].isna() | \
-                   df_template["Counter Party GSTIN/UID*"].astype(str).str.strip().eq("")
-        df_template.loc[no_gstin, "Invoice Type*"] = "EXP"
-        df_template.loc[no_gstin, "Invoice Sub_Type*"] = "WOPAY"
-        df_template.loc[no_gstin, "Nature of Supply*"] = "Inter"
 
         has_gstin = df_template["Counter Party GSTIN/UID*"].astype(str).str.strip().ne("")
-        has_igst = df_template["IGST Amount*"].notna() & (df_template["IGST Amount*"] != 0)
-        b2b_mask = has_gstin & has_igst
-        df_template.loc[b2b_mask, "Invoice Type*"] = "B2B"
-        df_template.loc[b2b_mask, "Invoice Sub_Type*"] = "R"
 
         gstin_prefix = df_template["GSTIN of the Tax Payer*"].astype(str).str[:2]
         counter_prefix = df_template["Counter Party GSTIN/UID*"].astype(str).str[:2]
@@ -102,8 +88,8 @@ if uploaded_file and return_period.isdigit() and len(return_period) == 6:
             "Intra" if a == b else "Inter" for a, b in zip(gstin_prefix, counter_prefix)
         ]
 
-        not_exp = df_template["Invoice Type*"] != "EXP"
-        df_template.loc[not_exp, "Place of Supply*"] = counter_prefix[not_exp]
+        df_template["Place of Supply*"] = df_template["Counter Party GSTIN/UID*"].astype(str).str[:2]
+
 
         df_template["Line item Number*"] = (
             df_template.groupby("Invoice Number*", dropna=False).cumcount() + 1
@@ -128,7 +114,7 @@ if uploaded_file and return_period.isdigit() and len(return_period) == 6:
         for tax_col in ["IGST Amount*", "CGST Amount*", "SGST Amount*"]:
             df_template[tax_col] = df_template[tax_col].apply(lambda x: "" if pd.isna(x) else x)
 
-        df_template.loc[df_template["Invoice Type*"] != "EXP", "Tax Rate*"] = 18
+        df_template["Tax Rate*"] = 18
 
         st.success("✅ File processed successfully!")
         st.dataframe(df_template)
@@ -169,9 +155,9 @@ if uploaded_file and return_period.isdigit() and len(return_period) == 6:
                         })
 
         st.download_button(
-            label="📥 Download Processed Excel (with dropdowns)",
+            label="📥 Download Processed Excel",
             data=output.getvalue(),
-            file_name="processed_gst_file_with_dropdowns.xlsx",
+            file_name="gstr1.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
